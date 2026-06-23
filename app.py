@@ -2,7 +2,9 @@
 from datetime import datetime, timezone
 from pathlib import Path
 import json
+import smtplib
 import uuid
+from email.message import EmailMessage
 
 import pandas as pd
 import streamlit as st
@@ -13,13 +15,39 @@ ROADMAP_JSONL = Path("inventor_readiness_roadmaps.jsonl")
 st.set_page_config(
     page_title="InventorPath.ai - Invention Readiness Score",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 
-st.title("InventorPath.ai — Invention Readiness Score™")
+st.sidebar.title("InventorPath.ai")
+st.sidebar.markdown(
+    "### Use the free invention readiness quiz\n\n"
+    "Quickly assess your invention idea from 0 to 100 using local Python logic only. "
+    "No paid APIs are required."
+)
+st.sidebar.markdown(
+    "### Upgrade paths\n"
+    "- **Free Tier**: Score your idea and get next steps\n"
+    "- **Guided Builder**: Build with a structured invention path\n"
+    "- **Professional Review**: Expert feedback on your concept\n"
+    "- **Attorney Partner Review**: Patent-ready review support\n"
+)
+st.sidebar.info(
+    "Save your score, view strengths and weaknesses, and continue building with InventorPath.ai."
+)
+st.sidebar.caption(
+    "Answer the quiz honestly for the most useful guidance and recommended next steps."
+)
+
+st.title("InventorPath.ai — Free Invention Readiness Quiz")
+st.markdown(
+    "### Score your invention idea from Raw Idea to Investor/Patent Review Ready."
+)
 st.write(
-    "Turn an idea into a clearer invention path. Enter your invention details, "
-    "then get a readiness score, strengths, weaknesses, and next-step roadmap."
+    "This local, free quiz evaluates your invention on problem validation, market demand, prototype readiness, "
+    "patent readiness, and commercialization preparedness."
+)
+st.write(
+    "Submit your answers below to get a 0–100 readiness score, strengths, weaknesses, next steps, and Inventor Academy lesson recommendations."
 )
 
 st.divider()
@@ -104,85 +132,119 @@ notes = st.text_area("Additional notes", height=80)
 def score_invention():
     scores = {}
 
-    problem_points = 0
+    problem_validation_points = 0
     if len(problem.strip()) > 30:
-        problem_points += 8
+        problem_validation_points += 6
     if len(target_user.strip()) > 20:
-        problem_points += 6
+        problem_validation_points += 5
     if len(existing_alternatives.strip()) > 20:
-        problem_points += 6
-    scores["Problem Clarity"] = min(problem_points, 20)
-
-    solution_points = 0
-    if len(solution.strip()) > 40:
-        solution_points += 8
-    if len(unique_advantage.strip()) > 30:
-        solution_points += 7
-    solution_points += {
-        "No prototype": 0,
-        "Sketch only": 2,
-        "Rough prototype": 4,
-        "Working prototype": 7,
-        "Tested prototype": 10,
-    }[prototype_status]
-    scores["Solution Quality"] = min(solution_points, 20)
-
-    market_points = {
-        "Unclear": 0,
-        "Somewhat clear": 5,
-        "Clear niche": 8,
-        "Very clear buyer/customer": 10,
-    }[market_clarity]
-    market_points += {
+        problem_validation_points += 4
+    problem_validation_points += {
         "No": 0,
         "Talked to 1-5 people": 3,
         "Talked to 6-20 people": 6,
         "Surveyed/tested with 20+ people": 10,
     }[customer_validation]
-    scores["Market Need"] = min(market_points, 20)
+    scores["Problem Validation"] = min(problem_validation_points, 20)
 
-    defensibility_points = {
-        "No": 0,
-        "Basic Google search": 4,
-        "Product search": 6,
-        "Patent search": 10,
-        "Patent attorney/search professional": 14,
-    }[prior_art_search]
-    if len(unique_advantage.strip()) > 30:
-        defensibility_points += 6
-    scores["Defensibility"] = min(defensibility_points, 20)
-
-    execution_points = {
-        "Unknown": 0,
-        "Maybe possible": 4,
-        "Technically feasible": 8,
-        "Already built/tested": 10,
-    }[manufacturability]
-    execution_points += {
+    market_demand_points = 0
+    market_demand_points += {
+        "Unclear": 0,
+        "Somewhat clear": 5,
+        "Clear niche": 8,
+        "Very clear buyer/customer": 10,
+    }[market_clarity]
+    market_demand_points += {
         "Unknown": 0,
         "Not sure yet": 1,
         "Sell product": 5,
         "License patent": 5,
-        "Subscription/service": 5,
-        "B2B sales": 5,
+        "Subscription/service": 6,
+        "B2B sales": 7,
     }[business_model]
-    if stage in ["Working prototype", "Tested prototype", "Ready for patent / market"]:
-        execution_points += 5
-    scores["Execution Readiness"] = min(execution_points, 20)
+    market_demand_points += 3 if len(problem.strip()) > 30 else 0
+    scores["Market Demand"] = min(market_demand_points, 20)
 
-    return sum(scores.values()), scores
+    prototype_readiness_points = {
+        "No prototype": 0,
+        "Sketch only": 4,
+        "Rough prototype": 8,
+        "Working prototype": 12,
+        "Tested prototype": 16,
+    }[prototype_status]
+    prototype_readiness_points += {
+        "Unknown": 0,
+        "Maybe possible": 3,
+        "Technically feasible": 6,
+        "Already built/tested": 8,
+    }[manufacturability]
+    prototype_readiness_points += 1 if stage in ["Rough prototype", "Working prototype", "Tested prototype", "Ready for patent / market"] else 0
+    scores["Prototype Readiness"] = min(prototype_readiness_points, 20)
+
+    patent_readiness_points = {
+        "No": 0,
+        "Basic Google search": 4,
+        "Product search": 7,
+        "Patent search": 12,
+        "Patent attorney/search professional": 16,
+    }[prior_art_search]
+    if len(unique_advantage.strip()) > 30:
+        patent_readiness_points += 4
+    if stage in ["Ready for patent / market", "Tested prototype"]:
+        patent_readiness_points += 2
+    scores["Patent Readiness"] = min(patent_readiness_points, 20)
+
+    commercialization_readiness_points = {
+        "Unknown": 0,
+        "Not sure yet": 1,
+        "Sell product": 6,
+        "License patent": 6,
+        "Subscription/service": 7,
+        "B2B sales": 8,
+    }[business_model]
+    commercialization_readiness_points += {
+        "Unclear": 0,
+        "Somewhat clear": 3,
+        "Clear niche": 5,
+        "Very clear buyer/customer": 7,
+    }[market_clarity]
+    commercialization_readiness_points += {
+        "Unknown": 0,
+        "Maybe possible": 2,
+        "Technically feasible": 3,
+        "Already built/tested": 4,
+    }[manufacturability]
+    scores["Commercialization Readiness"] = min(commercialization_readiness_points, 20)
+
+    overall_score = sum(scores.values())
+    return overall_score, scores
 
 
 def score_band(score):
-    if score >= 85:
-        return "High readiness"
-    if score >= 70:
-        return "Strong potential"
-    if score >= 50:
-        return "Promising but needs work"
-    if score >= 30:
-        return "Early stage"
-    return "Needs major clarification"
+    if score >= 76:
+        return "Investor/Patent Review Ready"
+    if score >= 51:
+        return "Development Ready"
+    if score >= 26:
+        return "Early Concept"
+    return "Raw Idea"
+
+
+def generate_academy_lessons(section_scores):
+    lessons = []
+    if section_scores["Problem Validation"] < 15:
+        lessons.append("Inventor Academy: Validate the problem and target customer")
+    if section_scores["Market Demand"] < 15:
+        lessons.append("Inventor Academy: Market demand and customer discovery")
+    if section_scores["Prototype Readiness"] < 15:
+        lessons.append("Inventor Academy: Rapid prototyping and testing")
+    if section_scores["Patent Readiness"] < 15:
+        lessons.append("Inventor Academy: Patent search and IP positioning")
+    if section_scores["Commercialization Readiness"] < 15:
+        lessons.append("Inventor Academy: Commercialization strategy and business model")
+    if not lessons:
+        lessons.append("Inventor Academy: Pitch, review, and prepare for investor / patent meetings")
+    return lessons
 
 
 def generate_strengths(section_scores):
@@ -191,7 +253,9 @@ def generate_strengths(section_scores):
         if points >= 15:
             strengths.append(f"{section}: strong foundation.")
     if not strengths:
-        strengths.append("You have an invention idea worth organizing, but it needs more detail before major spending.")
+        strengths.append(
+            "Your idea is worth exploring, and a clearer roadmap will help you move from concepts to a defensible invention."
+        )
     return strengths
 
 
@@ -199,26 +263,48 @@ def generate_weaknesses(section_scores):
     weaknesses = []
     for section, points in section_scores.items():
         if points < 10:
-            weaknesses.append(f"{section}: needs more work.")
+            weaknesses.append(
+                f"{section}: needs more detail, validation, or execution planning before advancing."
+            )
     if not weaknesses:
-        weaknesses.append("No major weak area detected, but professional patent and market review are still recommended.")
+        weaknesses.append(
+            "No major weak area detected, but professional review is still recommended for patent and commercialization planning."
+        )
     return weaknesses
 
 
 def generate_roadmap(section_scores):
     roadmap = []
-    if section_scores["Problem Clarity"] < 15:
-        roadmap.append("Clarify the problem, target user, and existing alternatives in one page.")
-    if section_scores["Market Need"] < 15:
-        roadmap.append("Interview 10-20 potential users and ask how they currently solve this problem.")
-    if section_scores["Solution Quality"] < 15:
-        roadmap.append("Create sketches, a mockup, or a rough prototype to make the invention easier to evaluate.")
-    if section_scores["Defensibility"] < 15:
-        roadmap.append("Do a product search and basic patent search before spending heavily on development.")
-    if section_scores["Execution Readiness"] < 15:
-        roadmap.append("Identify how this will be manufactured, licensed, sold, or partnered.")
-    roadmap.append("Create a short invention brief: problem, solution, user, advantage, prototype status, and next action.")
-    roadmap.append("When ready, speak with a patent professional before publicly disclosing sensitive details.")
+    if section_scores["Problem Validation"] < 15:
+        roadmap.append(
+            "Document the problem, who experiences it, and the current alternatives so you can validate market demand."
+        )
+    if section_scores["Market Demand"] < 15:
+        roadmap.append(
+            "Interview 10–20 potential customers and test whether they would pay for your solution."
+        )
+    if section_scores["Prototype Readiness"] < 15:
+        roadmap.append(
+            "Build a sketch, prototype, or proof of concept to test assumptions and improve technical confidence."
+        )
+    if section_scores["Patent Readiness"] < 15:
+        roadmap.append(
+            "Do a focused patent search and refine your unique advantage before filing or publicly sharing the idea."
+        )
+    if section_scores["Commercialization Readiness"] < 15:
+        roadmap.append(
+            "Clarify the business model, revenue path, and production or licensing strategy."
+        )
+    if not roadmap:
+        roadmap.append(
+            "Refine your invention brief and then validate with experts in patent, market, and manufacturing."
+        )
+    roadmap.append(
+        "Create a short invention brief: problem, solution, user, advantage, prototype status, and next action."
+    )
+    roadmap.append(
+        "When ready, speak with a patent professional before publicly disclosing sensitive details."
+    )
     return roadmap
 
 
@@ -294,34 +380,161 @@ def save_submission(score, section_scores, band, strengths, weaknesses, roadmap)
         f.write(json.dumps(json_record, ensure_ascii=False) + "\n")
 
 
-if st.button("Calculate Invention Readiness Score"):
+def send_results_email(
+    recipient_email,
+    score,
+    band,
+    strengths,
+    weaknesses,
+    roadmap,
+    lessons,
+):
+    smtp_host = st.secrets.get("SMTP_HOST")
+    smtp_port = int(st.secrets.get("SMTP_PORT", 0))
+    smtp_user = st.secrets.get("SMTP_USER")
+    smtp_password = st.secrets.get("SMTP_PASSWORD")
+    from_email = st.secrets.get("FROM_EMAIL")
+    from_name = st.secrets.get("FROM_NAME")
+
+    if not all([smtp_host, smtp_port, smtp_user, smtp_password, from_email, from_name]):
+        raise ValueError(
+            "Missing SMTP configuration in Streamlit secrets. "
+            "Please set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, FROM_EMAIL, FROM_NAME."
+        )
+
+    msg = EmailMessage()
+    msg["Subject"] = f"Your Inventor Readiness Score: {score}/100 ({band})"
+    msg["From"] = f"{from_name} <{from_email}>"
+    msg["To"] = recipient_email
+
+    body_lines = [
+        f"Inventor Readiness Score: {score}/100",
+        f"Score Category: {band}",
+        "",
+        "Strengths:",
+    ]
+    body_lines += [f"- {item}" for item in strengths]
+    body_lines += ["", "Weaknesses:"]
+    body_lines += [f"- {item}" for item in weaknesses]
+    body_lines += ["", "Recommended Next Steps:"]
+    body_lines += [f"{i}. {step}" for i, step in enumerate(roadmap, start=1)]
+    body_lines += ["", "Recommended Inventor Academy Lessons:"]
+    body_lines += [f"- {lesson}" for lesson in lessons]
+    body_lines.append("")
+    body_lines.append("Sent by InventorPath.ai")
+
+    msg.set_content("\n".join(body_lines))
+
+    if smtp_port == 465:
+        smtp = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=10)
+    else:
+        smtp = smtplib.SMTP(smtp_host, smtp_port, timeout=10)
+        if smtp_port == 587:
+            smtp.starttls()
+
+    with smtp:
+        smtp.login(smtp_user, smtp_password)
+        smtp.send_message(msg)
+
+
+if st.button("Save your score and continue building your invention"):
     score, section_scores = score_invention()
     band = score_band(score)
     strengths = generate_strengths(section_scores)
     weaknesses = generate_weaknesses(section_scores)
     roadmap = generate_roadmap(section_scores)
+    lessons = generate_academy_lessons(section_scores)
 
     st.divider()
-    st.header(f"Score: {score}/100 — {band}")
+    st.header("InventorPath.ai Score Report")
+    st.subheader(f"Your readiness score: {score}/100 — {band}")
+    st.write(
+        "This result shows where your idea is today and what to focus on next to move toward investor and patent review readiness."
+    )
 
-    st.subheader("Section Scores")
-    score_df = pd.DataFrame([{"Category": k, "Score": v, "Max": 20} for k, v in section_scores.items()])
-    st.dataframe(score_df, width="stretch", hide_index=True)
+    score_html = f"""
+    <div style='background:#f8fafc;border:1px solid #cbd5e1;border-radius:16px;padding:18px;'>
+      <div style='font-size:14px;font-weight:700;color:#0f172a;margin-bottom:10px;'>Overall readiness gauge</div>
+      <div style='background:#e2e8f0;border-radius:999px;overflow:hidden;height:28px;'>
+        <div style='width:{score}%;background:linear-gradient(90deg, #0ea5e9, #16a34a);height:100%;'></div>
+      </div>
+      <div style='display:flex;justify-content:space-between;font-size:12px;color:#475569;padding-top:8px;'>
+        <span>0</span><span>50</span><span>100</span>
+      </div>
+    </div>
+    """
 
-    st.subheader("Strengths")
-    for item in strengths:
-        st.success(item)
+    score_df = pd.DataFrame.from_dict(section_scores, orient="index", columns=["Score"])
+    score_df["Max"] = 20
+    score_df = score_df.reset_index().rename(columns={"index": "Category"})
 
-    st.subheader("Weaknesses")
-    for item in weaknesses:
-        st.warning(item)
+    gauge_col, detail_col = st.columns([2, 3])
+    with gauge_col:
+        st.markdown(score_html, unsafe_allow_html=True)
+        st.metric("Readiness tier", band)
+        st.info("Save your score and continue building your invention in InventorPath.ai.")
+
+    with detail_col:
+        st.subheader("Category Breakdown")
+        st.dataframe(score_df, width="stretch", hide_index=True)
+        bar_chart_df = pd.DataFrame({"Score": section_scores}, index=section_scores.keys())
+        st.bar_chart(bar_chart_df)
+
+    strengths_col, weaknesses_col = st.columns(2)
+    with strengths_col:
+        st.subheader("Strengths")
+        for item in strengths:
+            st.success(item)
+
+    with weaknesses_col:
+        st.subheader("Weaknesses")
+        for item in weaknesses:
+            st.warning(item)
 
     st.subheader("Recommended Next Steps")
     for i, step in enumerate(roadmap, start=1):
         st.write(f"{i}. {step}")
 
+    st.subheader("Recommended Inventor Academy Lessons")
+    for lesson in lessons:
+        st.write(f"- {lesson}")
+
+    st.subheader("Email your results")
+    recipient_email = st.text_input(
+        "Email results to",
+        value=email,
+        key="email_results",
+    )
+
+    if st.button("Email My Results"):
+        if not recipient_email or not recipient_email.strip():
+            st.error("Please enter a valid email address to receive your results.")
+        else:
+            try:
+                send_results_email(
+                    recipient_email=recipient_email.strip(),
+                    score=score,
+                    band=band,
+                    strengths=strengths,
+                    weaknesses=weaknesses,
+                    roadmap=roadmap,
+                    lessons=lessons,
+                )
+                st.success(f"Results emailed to {recipient_email.strip()}.")
+            except Exception as exc:
+                st.error(f"Failed to send email: {exc}")
+
+    st.markdown(
+        "---\n"
+        "### Upgrade to support your next phase\n"
+        "- **Free Tier**: Score your idea and explore the basics.\n"
+        "- **Guided Builder**: Follow a structured invention development path.\n"
+        "- **Professional Review**: Get expert concept and prototype feedback.\n"
+        "- **Attorney Partner Review**: Prepare your invention for patent review.\n"
+    )
+
     save_submission(score, section_scores, band, strengths, weaknesses, roadmap)
-    st.info(f"Saved assessment to {SUBMISSIONS_CSV} and {ROADMAP_JSONL}.")
+    st.success(f"Saved assessment to {SUBMISSIONS_CSV} and {ROADMAP_JSONL}.")
 
 st.divider()
 st.caption(
