@@ -5,6 +5,7 @@ import json
 import smtplib
 import uuid
 from email.message import EmailMessage
+from urllib.parse import quote_plus
 
 import pandas as pd
 import streamlit as st
@@ -308,6 +309,11 @@ def generate_roadmap(section_scores):
     return roadmap
 
 
+def academy_link_for(step_text: str) -> str:
+    base = "https://inventorpath.ai/academy/search?q="
+    return base + quote_plus(step_text)
+
+
 def save_submission(score, section_scores, band, strengths, weaknesses, roadmap):
     submission_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
@@ -493,7 +499,8 @@ if st.button("Save your score and continue building your invention"):
 
     st.subheader("Recommended Next Steps")
     for i, step in enumerate(roadmap, start=1):
-        st.write(f"{i}. {step}")
+        url = academy_link_for(step)
+        st.markdown(f"{i}. [{step}]({url})")
 
     st.subheader("Recommended Inventor Academy Lessons")
     for lesson in lessons:
