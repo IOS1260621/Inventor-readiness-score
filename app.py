@@ -314,6 +314,53 @@ def academy_link_for(step_text: str) -> str:
     return base + quote_plus(step_text)
 
 
+# Custom target URLs for known roadmap steps
+ACADEMY_ROADMAP_LINKS = {
+    "Document the problem, who experiences it, and the current alternatives so you can validate market demand.":
+        "https://inventorpath.ai/academy/problem-validation",
+    "Interview 10–20 potential customers and test whether they would pay for your solution.":
+        "https://inventorpath.ai/academy/customer-discovery",
+    "Build a sketch, prototype, or proof of concept to test assumptions and improve technical confidence.":
+        "https://inventorpath.ai/academy/prototyping",
+    "Do a focused patent search and refine your unique advantage before filing or publicly sharing the idea.":
+        "https://inventorpath.ai/academy/patent-search",
+    "Clarify the business model, revenue path, and production or licensing strategy.":
+        "https://inventorpath.ai/academy/commercialization",
+    "Refine your invention brief and then validate with experts in patent, market, and manufacturing.":
+        "https://inventorpath.ai/academy/expert-review",
+    "Create a short invention brief: problem, solution, user, advantage, prototype status, and next action.":
+        "https://inventorpath.ai/academy/invention-brief",
+    "When ready, speak with a patent professional before publicly disclosing sensitive details.":
+        "https://inventorpath.ai/academy/patent-professional",
+}
+
+# Custom target URLs for known recommended lessons
+ACADEMY_LESSON_LINKS = {
+    "Inventor Academy: Validate the problem and target customer":
+        "https://inventorpath.ai/academy/validate-problem",
+    "Inventor Academy: Market demand and customer discovery":
+        "https://inventorpath.ai/academy/market-demand",
+    "Inventor Academy: Rapid prototyping and testing":
+        "https://inventorpath.ai/academy/prototyping",
+    "Inventor Academy: Patent search and IP positioning":
+        "https://inventorpath.ai/academy/patent-search",
+    "Inventor Academy: Commercialization strategy and business model":
+        "https://inventorpath.ai/academy/commercialization",
+    "Inventor Academy: Pitch, review, and prepare for investor / patent meetings":
+        "https://inventorpath.ai/academy/pitch-review",
+}
+
+
+def get_academy_url_for(text: str) -> str:
+    # Exact-match mappings first
+    if text in ACADEMY_ROADMAP_LINKS:
+        return ACADEMY_ROADMAP_LINKS[text]
+    if text in ACADEMY_LESSON_LINKS:
+        return ACADEMY_LESSON_LINKS[text]
+    # Fallback to search
+    return academy_link_for(text)
+
+
 def save_submission(score, section_scores, band, strengths, weaknesses, roadmap):
     submission_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
@@ -504,7 +551,8 @@ if st.button("Save your score and continue building your invention"):
 
     st.subheader("Recommended Inventor Academy Lessons")
     for lesson in lessons:
-        st.write(f"- {lesson}")
+        lesson_url = get_academy_url_for(lesson)
+        st.markdown(f"- [{lesson}]({lesson_url})")
 
     st.subheader("Email your results")
     recipient_email = st.text_input(
