@@ -6,12 +6,14 @@ import smtplib
 import uuid
 from email.message import EmailMessage
 from urllib.parse import quote_plus
+import sqlite3
 
 import pandas as pd
 import streamlit as st
 
 SUBMISSIONS_CSV = Path("inventor_readiness_submissions.csv")
 ROADMAP_JSONL = Path("inventor_readiness_roadmaps.jsonl")
+DB_PATH = Path("inventor_readiness_submissions.db")
 
 st.set_page_config(
     page_title="InventorPath.ai - Invention Readiness Score",
@@ -50,6 +52,31 @@ st.write(
 st.write(
     "Submit your answers below to get a 0–100 readiness score, strengths, weaknesses, next steps, and Inventor Academy lesson recommendations."
 )
+
+
+# Top-right data access button
+if "show_data_pw" not in st.session_state:
+    st.session_state["show_data_pw"] = False
+
+col_l, col_r = st.columns([5, 1])
+with col_r:
+    if st.button("Data", key="view_data_btn"):
+        st.session_state["show_data_pw"] = True
+
+if st.session_state.get("show_data_pw"):
+    pw = st.text_input("Enter admin password to view database", type="password", key="admin_pw")
+    if pw:
+        if pw == "founder1":
+            try:
+                conn = sqlite3.connect(DB_PATH)
+                df_db = pd.read_sql_query("SELECT * FROM submissions ORDER BY saved_at_utc DESC", conn)
+                conn.close()
+                st.subheader("Submissions Database")
+                st.dataframe(df_db)
+            except Exception as e:
+                st.error(f"Failed to read database: {e}")
+        else:
+            st.error("Invalid password")
 
 st.divider()
 st.subheader("Inventor Profile")
@@ -431,6 +458,87 @@ def save_submission(score, section_scores, band, strengths, weaknesses, roadmap)
 
     with ROADMAP_JSONL.open("a", encoding="utf-8") as f:
         f.write(json.dumps(json_record, ensure_ascii=False) + "\n")
+
+
+def init_db():
+    """Ensure the SQLite DB and submissions table exist."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS submissions (
+                submission_id TEXT PRIMARY KEY,
+                saved_at_utc TEXT,
+                inventor_name TEXT,
+                email TEXT,
+                invention_name TEXT,
+                goal TEXT,
+                stage TEXT,
+                score INTEGER,
+                band TEXT,
+                problem TEXT,
+                target_user TEXT,
+                solution TEXT,
+                existing_alternatives TEXT,
+                unique_advantage TEXT,
+                prototype_status TEXT,
+                customer_validation TEXT,
+                prior_art_search TEXT,
+                market_clarity TEXT,
+                manufacturability TEXT,
+                business_model TEXT,
+                notes TEXT
+            )
+            """,
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        # If DB cannot be initialized, allow the app to continue using CSV/JSONL
+        pass
+    # Also insert into SQLite DB for structured queries and UI display
+    try:
+        init_db()
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO submissions (
+                submission_id, saved_at_utc, inventor_name, email, invention_name,
+                goal, stage, score, band, problem, target_user, solution,
+                existing_alternatives, unique_advantage, prototype_status,
+                customer_validation, prior_art_search, market_clarity,
+                manufacturability, business_model, notes
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                submission_id,
+                now,
+                inventor_name,
+                email,
+                invention_name,
+                goal,
+                stage,
+                score,
+                band,
+                problem,
+                target_user,
+                solution,
+                existing_alternatives,
+                unique_advantage,
+                prototype_status,
+                customer_validation,
+                prior_art_search,
+                market_clarity,
+                manufacturability,
+                business_model,
+                notes,
+            ),
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        # Do not block main flow if DB write fails; CSV/JSONL remain as fallback
+        pass
 
 
 def send_results_email(
